@@ -55,9 +55,6 @@ public class AutonomoRoda extends LinearOpMode {
         turn(90, 0.5);
 
         runInches(22, 0.4);
-        servo.setPower(1);
-        sleep(400);
-        servo.setPower(0);
 
         telemetry.addData("Path", "Complete");
         telemetry.update();
@@ -151,7 +148,6 @@ public class AutonomoRoda extends LinearOpMode {
                 idle();
             }
 
-            // Para motores
             leftDrive.setPower(0);
             rightDrive.setPower(0);
             sleep(200);

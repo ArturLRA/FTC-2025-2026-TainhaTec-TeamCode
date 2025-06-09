@@ -15,6 +15,8 @@ public class AutonomoOdometria extends LinearOpMode {
 
     private DcMotor leftDrive = null;
     private DcMotor rightDrive = null;
+    private DcMotor encoderParalelo = null;
+    private DcMotor encoderLateral = null;
     private CRServo servo = null;
 
     private IMU imu;
@@ -24,12 +26,25 @@ public class AutonomoOdometria extends LinearOpMode {
 
     private final double TICKS_PER_ROTATION = 292.0;
     private final double WHEEL_DIAMETER_INCHES = 3.54;
+    private final double TICKS_PER_INCH = TICKS_PER_ROTATION / (WHEEL_DIAMETER_INCHES * Math.PI);
+
+    private double x = 0.0;
+    private double y = 0.0;
+    private double heading = 0.0;
+
+    private int lastParalelo = 0;
+    private int lastLateral = 0;
+
+    private Thread odometriaThread;
+    private boolean odometriaAtiva = false;
 
     @Override
     public void runOpMode() {
         leftDrive = hardwareMap.get(DcMotor.class, "left_drive");
         rightDrive = hardwareMap.get(DcMotor.class, "right_drive");
         servo = hardwareMap.get(CRServo.class, "servo_claw");
+        encoderParalelo = hardwareMap.get(DcMotor.class, "parallel_odometry");
+        encoderLateral = hardwareMap.get(DcMotor.class, "side_odometry");
 
         imu = hardwareMap.get(IMU.class, "imu");
         imuParams = new IMU.Parameters(
@@ -47,6 +62,14 @@ public class AutonomoOdometria extends LinearOpMode {
         rightDrive.setDirection(DcMotor.Direction.REVERSE);
         leftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        encoderParalelo.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        encoderLateral.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        encoderParalelo.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        encoderLateral.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        lastParalelo = encoderParalelo.getCurrentPosition();
+        lastLateral = encoderLateral.getCurrentPosition();
 
         waitForStart();
 
@@ -151,7 +174,6 @@ public class AutonomoOdometria extends LinearOpMode {
                 idle();
             }
 
-            // Para motores
             leftDrive.setPower(0);
             rightDrive.setPower(0);
             sleep(200);
@@ -160,6 +182,39 @@ public class AutonomoOdometria extends LinearOpMode {
 
             attempt++;
         }
+    }
+
+    public void updateOdometry() {
+        int currentParalelo = encoderParalelo.getCurrentPosition();
+        int currentLateral = encoderLateral.getCurrentPosition();
+
+        int deltaParalelo = currentParalelo - lastParalelo;
+        int deltaLateral = currentLateral - lastLateral;
+
+        lastParalelo = currentParalelo;
+        lastLateral = currentLateral;
+
+        double deltaX = deltaParalelo / TICKS_PER_INCH;
+        double deltaY = deltaLateral / TICKS_PER_INCH;
+
+        heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+
+        double cosH = Math.cos(heading);
+        double sinH = Math.sin(heading);
+
+        x += deltaX * cosH - deltaY * sinH;
+        y += deltaX * sinH + deltaY * cosH;
+    }
+
+    public void startOdometryThread() {
+        odometriaAtiva = true;
+        odometriaThread = new Thread(() -> {
+            while (opModeIsActive() && odometriaAtiva) {
+                updateOdometry();
+                sleep(50);
+            }
+        });
+        odometriaThread.start();
     }
 
     public double angleWrap(double angle) {
@@ -176,6 +231,9 @@ public class AutonomoOdometria extends LinearOpMode {
         telemetry.addData("Run Time", runtime.toString());
         telemetry.addData("Encoder Left", leftDrive.getCurrentPosition());
         telemetry.addData("Encoder Right", rightDrive.getCurrentPosition());
+        telemetry.addData("Posição X", x);
+        telemetry.addData("posição Y", y);
+        telemetry.addData("Heading (deg)", Math.toDegrees(heading));
         telemetry.update();
     }
 }

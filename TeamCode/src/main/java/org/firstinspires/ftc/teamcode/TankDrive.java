@@ -72,12 +72,12 @@ public final class TankDrive {
 
         // drive model parameters
         public double inPerTick = 0.0381;
-        public double trackWidthTicks = 0;
+        public double trackWidthTicks = 380.05;
 
         // feedforward parameters (in tick units)
-        public double kS = 0;
-        public double kV = 0;
-        public double kA = 0;
+        public double kS = 0.05;
+        public double kV = 0.0337;
+        public double kA = 0.005    ;
 
         // path profile parameters (in inches)
         public double maxWheelVel = 50;
@@ -93,7 +93,7 @@ public final class TankDrive {
         public double ramseteBBar = 2.0; // positive
 
         // turn controller gains
-        public double turnGain = 0.0;
+        public double turnGain = 2.5;
         public double turnVelGain = 0.0;
     }
 
@@ -506,5 +506,40 @@ public final class TankDrive {
                 defaultTurnConstraints,
                 defaultVelConstraint, defaultAccelConstraint
         );
+    }
+    private Action currentAction;
+
+    /**
+     * Executa uma Action de forma assíncrona (não bloqueante).
+     */
+    public void runAsync(Action action) {
+        currentAction = action;
+    }
+
+    /**
+     * Atualiza o estado do robô e executa a ação atual, se houver.
+     */
+    public void update() {
+        updatePoseEstimate();
+
+        if (currentAction != null) {
+            TelemetryPacket packet = new TelemetryPacket();
+            boolean active = currentAction.run(packet);
+            if (!active) currentAction = null;
+        }
+    }
+
+    /**
+     * Retorna se ainda há uma ação sendo executada.
+     */
+    public boolean isBusy() {
+        return currentAction != null;
+    }
+
+    /**
+     * Retorna a pose estimada atual do robô.
+     */
+    public Pose2d getPoseEstimate() {
+        return localizer.getPose();
     }
 }

@@ -1,102 +1,82 @@
 package org.firstinspires.ftc.teamcode;
 
-import androidx.annotation.NonNull;
-
-// Importações Road Runner
+import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
+import com.acmerobotics.dashboard.canvas.Canvas;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+
 import com.acmerobotics.roadrunner.Action;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
-import com.acmerobotics.roadrunner.ftc.Actions;
 
-// Importações FTC SDK
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.Servo;
-
-// Importação do drive personalizado
-import org.firstinspires.ftc.teamcode.TankDrive;
 
 @Config
 @Autonomous(name = "AutonomoRR01", group = "Autonomous")
 public class AutonomoRR01 extends LinearOpMode {
 
-    // Classe Claw com servo da garra e ações integradas
-    public class Claw {
-        private Servo claw;
-
-        public Claw(HardwareMap hardwareMap) {
-            claw = hardwareMap.get(Servo.class, "servo_claw");
-        }
-
-        // Ação de fechar a garra
-        public class CloseClaw implements Action {
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                claw.setPosition(0.55); // Fecha a garra
-                return false; // Ação executada uma vez só
-            }
-        }
-
-        // Ação de abrir a garra
-        public class OpenClaw implements Action {
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                claw.setPosition(1.0); // Abre a garra
-                return false;
-            }
-        }
-
-        // Métodos auxiliares para retornar as ações
-        public Action closeClaw() {
-            return new CloseClaw();
-        }
-
-        public Action openClaw() {
-            return new OpenClaw();
-        }
-    }
-
     @Override
     public void runOpMode() throws InterruptedException {
-        // Define a posição inicial do robô
+        // Pose inicial: centro da arena, voltado para frente (X positivo)
         Pose2d startPose = new Pose2d(0, 0, 0);
 
-        // Instancia os subsistemas
+        // Inicializa o TankDrive e Dashboard
         TankDrive drive = new TankDrive(hardwareMap, startPose);
-        Claw claw = new Claw(hardwareMap);
+        FtcDashboard dashboard = FtcDashboard.getInstance();
 
-        // Fecha a garra inicialmente
-        Actions.runBlocking(claw.closeClaw());
-
-        // Aguarda o início do modo autônomo
+        // Espera o início
         while (!isStopRequested() && !opModeIsActive()) {
-            telemetry.addLine("Waiting for start");
+            telemetry.addLine("Aguardando início...");
             telemetry.update();
         }
 
         waitForStart();
         if (isStopRequested()) return;
 
-        // Trajetória inicial: sobe em Y e vai para X=12
-        Action routine = drive.actionBuilder(startPose)
-                .lineToY(24)
-                .waitSeconds(1)
-                .lineToX(12)
-                .build();
+        // Define uma sequência simples de movimentos
+        Action routine = new SequentialAction(
+                drive.actionBuilder(startPose)
+                        .lineToX(24)
+                        .waitSeconds(1)
+                        .lineToX(48)
+                        .build()
+        );
 
-        // Trajetória final de saída
-        Action exitRoutine = drive.actionBuilder(new Pose2d(12, 24, 0))
-                .lineToX(48)
-                .build();
+        // Inicia a execução de forma assíncrona
+        drive.runAsync(routine);
 
-        // Executa toda a sequência de forma bloqueante
-        Actions.runBlocking(new SequentialAction(
-                routine,
-                claw.openClaw(),
-                exitRoutine
-        ));
+        // Loop de execução e envio para o Dashboard
+        while (opModeIsActive() && drive.isBusy()) {
+            drive.update();
+
+            Pose2d pose = drive.getPoseEstimate();
+
+            TelemetryPacket packet = new TelemetryPacket();
+            Canvas fieldOverlay = packet.fieldOverlay();
+
+            // Desenha a arena (12 ft x 12 ft = 144 x 144 in)
+            fieldOverlay.setStroke("#000000");
+            fieldOverlay.strokeRect(-72, -72, 144, 144);
+
+            // Desenha o robô (círculo + direção)
+            fieldOverlay.setFill("#4CAF50");
+            fieldOverlay.fillCircle(pose.position.x, pose.position.y, 3);
+            fieldOverlay.strokeLine(
+                    pose.position.x,
+                    pose.position.y,
+                    pose.position.x + Math.cos(pose.heading.toDouble()) * 6,
+                    pose.position.y + Math.sin(pose.heading.toDouble()) * 6
+            );
+
+            dashboard.sendTelemetryPacket(packet);
+        }
+
+        // Exibe a pose final no Driver Station
+        Pose2d finalPose = drive.getPoseEstimate();
+        telemetry.addData("x", finalPose.position.x);
+        telemetry.addData("y", finalPose.position.y);
+        telemetry.addData("heading (deg)", Math.toDegrees(finalPose.heading.toDouble()));
+        telemetry.update();
     }
 }

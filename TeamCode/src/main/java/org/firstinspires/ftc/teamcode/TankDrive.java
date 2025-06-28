@@ -75,9 +75,9 @@ public final class TankDrive {
         public double trackWidthTicks = 380.05;
 
         // feedforward parameters (in tick units)
-        public double kS = 0.05;
-        public double kV = 0.0337;
-        public double kA = 0.005    ;
+        public double kS = 0.01;
+        public double kV = 1.0;
+        public double kA = 0.00001;
 
         // path profile parameters (in inches)
         public double maxWheelVel = 50;
@@ -118,7 +118,7 @@ public final class TankDrive {
     public final VoltageSensor voltageSensor;
 
     public final Localizer localizer;
-    private final LinkedList<Pose2d> poseHistory = new LinkedList<>();
+    public final LinkedList<Pose2d> poseHistory = new LinkedList<>();
 
     private final DownsampledWriter estimatedPoseWriter = new DownsampledWriter("ESTIMATED_POSE", 50_000_000);
     private final DownsampledWriter targetPoseWriter = new DownsampledWriter("TARGET_POSE", 50_000_000);
@@ -509,37 +509,4 @@ public final class TankDrive {
     }
     private Action currentAction;
 
-    /**
-     * Executa uma Action de forma assíncrona (não bloqueante).
-     */
-    public void runAsync(Action action) {
-        currentAction = action;
-    }
-
-    /**
-     * Atualiza o estado do robô e executa a ação atual, se houver.
-     */
-    public void update() {
-        updatePoseEstimate();
-
-        if (currentAction != null) {
-            TelemetryPacket packet = new TelemetryPacket();
-            boolean active = currentAction.run(packet);
-            if (!active) currentAction = null;
-        }
-    }
-
-    /**
-     * Retorna se ainda há uma ação sendo executada.
-     */
-    public boolean isBusy() {
-        return currentAction != null;
-    }
-
-    /**
-     * Retorna a pose estimada atual do robô.
-     */
-    public Pose2d getPoseEstimate() {
-        return localizer.getPose();
-    }
 }

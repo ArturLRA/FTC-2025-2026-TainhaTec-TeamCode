@@ -1,82 +1,91 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.acmerobotics.dashboard.FtcDashboard;
-import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.dashboard.canvas.Canvas;
-import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import androidx.annotation.NonNull;
 
+import com.acmerobotics.dashboard.config.Config;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import com.acmerobotics.dashboard.canvas.Canvas;
 import com.acmerobotics.roadrunner.Action;
 import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.SequentialAction;
+import com.acmerobotics.roadrunner.TrajectoryActionBuilder;
+import com.acmerobotics.roadrunner.ftc.Actions;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.TankDrive;
+import org.firstinspires.ftc.teamcode.Drawing;
+
 @Config
 @Autonomous(name = "AutonomoRR01", group = "Autonomous")
 public class AutonomoRR01 extends LinearOpMode {
-
     @Override
-    public void runOpMode() throws InterruptedException {
-        // Pose inicial: centro da arena, voltado para frente (X positivo)
-        Pose2d startPose = new Pose2d(0, 0, 0);
+    public void runOpMode() {
+        Pose2d initialPose = new Pose2d(0, 0, 0);
+        TankDrive drive = new TankDrive(hardwareMap, initialPose);
 
-        // Inicializa o TankDrive e Dashboard
-        TankDrive drive = new TankDrive(hardwareMap, startPose);
-        FtcDashboard dashboard = FtcDashboard.getInstance();
+        int visionOutputPosition = 1;
 
-        // Espera o início
+        TrajectoryActionBuilder tab1 = drive.actionBuilder(initialPose)
+                .lineToX(30)
+                .waitSeconds(1)
+                .setTangent(Math.toRadians(90));
+
+        Action trajectoryAction = tab1.build();
+
         while (!isStopRequested() && !opModeIsActive()) {
-            telemetry.addLine("Aguardando início...");
+            telemetry.addData("Status", "Aguardando start");
+            telemetry.addData("Posição detectada", visionOutputPosition);
             telemetry.update();
         }
 
         waitForStart();
+
         if (isStopRequested()) return;
 
-        // Define uma sequência simples de movimentos
-        Action routine = new SequentialAction(
-                drive.actionBuilder(startPose)
-                        .lineToX(24)
-                        .waitSeconds(1)
-                        .lineToX(48)
-                        .build()
-        );
+        telemetry.addData("Status", "Executando trajetória");
+        telemetry.update();
 
-        // Inicia a execução de forma assíncrona
-        drive.runAsync(routine);
+        Actions.runBlocking(trajectoryAction);
 
-        // Loop de execução e envio para o Dashboard
-        while (opModeIsActive() && drive.isBusy()) {
-            drive.update();
+        drive.updatePoseEstimate();
 
-            Pose2d pose = drive.getPoseEstimate();
-
+        while (opModeIsActive()) {
             TelemetryPacket packet = new TelemetryPacket();
+
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+
             Canvas fieldOverlay = packet.fieldOverlay();
 
-            // Desenha a arena (12 ft x 12 ft = 144 x 144 in)
-            fieldOverlay.setStroke("#000000");
-            fieldOverlay.strokeRect(-72, -72, 144, 144);
+            fieldOverlay.setStroke("#3F51B5");
+            Drawing.drawRobot(fieldOverlay, pose);
 
-            // Desenha o robô (círculo + direção)
-            fieldOverlay.setFill("#4CAF50");
-            fieldOverlay.fillCircle(pose.position.x, pose.position.y, 3);
-            fieldOverlay.strokeLine(
-                    pose.position.x,
-                    pose.position.y,
-                    pose.position.x + Math.cos(pose.heading.toDouble()) * 6,
-                    pose.position.y + Math.sin(pose.heading.toDouble()) * 6
-            );
+            double[] xPoints = new double[drive.poseHistory.size()];
+            double[] yPoints = new double[drive.poseHistory.size()];
+            for (int i = 0; i < drive.poseHistory.size(); i++) {
+                xPoints[i] = drive.poseHistory.get(i).position.x;
+                yPoints[i] = drive.poseHistory.get(i).position.y;
+            }
+            fieldOverlay.setStroke("#4CAF50");
+            fieldOverlay.setStrokeWidth(1);
+            fieldOverlay.strokePolyline(xPoints, yPoints);
 
-            dashboard.sendTelemetryPacket(packet);
+            packet.put("x", pose.position.x);
+            packet.put("y", pose.position.y);
+            packet.put("heading (deg)", Math.toDegrees(pose.heading.toDouble()));
+
+            telemetry.addData("Pose", pose);
+            telemetry.update();
+
+            com.acmerobotics.dashboard.FtcDashboard.getInstance().sendTelemetryPacket(packet);
         }
-
-        // Exibe a pose final no Driver Station
-        Pose2d finalPose = drive.getPoseEstimate();
-        telemetry.addData("x", finalPose.position.x);
-        telemetry.addData("y", finalPose.position.y);
-        telemetry.addData("heading (deg)", Math.toDegrees(finalPose.heading.toDouble()));
-        telemetry.update();
     }
 }
+
+
+
+
+
+
+

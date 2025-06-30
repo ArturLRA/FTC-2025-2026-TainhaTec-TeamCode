@@ -3,7 +3,6 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 //Primeiro eu declaro os "imports". Os dois primeiros são "import com.qualcomm.eventloop.opmode.LinearOpMode;" e "import com.qualcomm.eventloop.opmode.Autonomous; Nesse caso eu estou fazendo um autonomo, mas se fosse um teleoperado seria diferente essa segunda linha
 
 @Disabled
@@ -23,12 +22,11 @@ public class AutonomoTreinamente2 extends LinearOpMode {
         leftDrive = hardwareMap.get(DcMotor.class, "left_drive");
         rightDrive = hardwareMap.get(DcMotor.class, "right_drive");
 //Aqui nessa parte eu declaro os nomes dos motores
+
         leftDrive.setDirection(DcMotor.Direction.REVERSE);
         rightDrive.setDirection(DcMotor.Direction.FORWARD);
 //Já nessa parte eu declaro as direções em que a rodas vão girar
-        leftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-//E na ultima parte da quarta parte eu declaro os freios da roda
+
         waitForStart();
         runInches(44, 0.4);
         turnDegrees(90, 0.4);

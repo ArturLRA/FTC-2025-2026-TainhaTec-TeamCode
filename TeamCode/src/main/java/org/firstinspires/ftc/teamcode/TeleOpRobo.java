@@ -1,22 +1,33 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.hardware.CRServo;
 
-@TeleOp(name="TeleOpRoda", group="Linear OpMode")
-public class TeleOpRoda extends LinearOpMode {
+@TeleOp(name="TeleOpRobo", group="Linear OpMode")
+public class TeleOpRobo extends LinearOpMode {
 
     private ElapsedTime runtime = new ElapsedTime();
+
     private DcMotor leftDrive = null;
     private DcMotor rightDrive = null;
+    private DcMotorEx armDrive = null;
 
     private CRServo servoGarra1 = null;
     private CRServo servoGarra2 = null;
+
+    private static double p = 0.005, i = 0.0001, d = 0.0003; //Proporcional, Integral, Derivativo
+    private static double f = 0.0005; //feedFoward
+    private PIDFController pidf;
+
+    private int inicialArmPosition = 0, upArmPosition = 1000, midleArmPosition = 500;
+
+    private int armTargetPosition;
 
     @Override
     public void runOpMode() {
@@ -25,13 +36,23 @@ public class TeleOpRoda extends LinearOpMode {
 
         leftDrive = hardwareMap.get(DcMotor.class, "left_drive");
         rightDrive = hardwareMap.get(DcMotor.class, "right_drive");
+        armDrive = hardwareMap.get(DcMotorEx.class, "arm_drive");
+
         servoGarra1 = hardwareMap.get(CRServo.class, "servo_garra1");
         servoGarra2 = hardwareMap.get(CRServo.class, "servo_garra2");
 
+        leftDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        rightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        leftDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rightDrive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        armDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
         leftDrive.setDirection(DcMotor.Direction.REVERSE);
         rightDrive.setDirection(DcMotor.Direction.FORWARD);
+        armDrive.setDirection(DcMotor.Direction.FORWARD);
 
-
+        pidf = new PIDFController(p, i, d, f);
 
         waitForStart();
         runtime.reset();
@@ -57,9 +78,27 @@ public class TeleOpRoda extends LinearOpMode {
                 servoGarra2.setPower(0);
             }
 
+            if (gamepad1.x) {
+                armTargetPosition = inicialArmPosition;
+            } else if (gamepad1.b) {
+                armTargetPosition = upArmPosition;
+            } else if (gamepad1.y) {
+                armTargetPosition = midleArmPosition;
+            }
+
+            updateArmPIDF();
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.addData("Motors", "left (%.2f), right (%.2f)", leftPower, rightPower);
             telemetry.update();
         }
     }
+
+    public void updateArmPIDF() {
+        int currentPosition = armDrive.getCurrentPosition();
+        double pidfPower = pidf.calculate(currentPosition, armTargetPosition);
+        armDrive.setPower(pidfPower);
+
+        telemetry.addData("Arm Power (PIDF)", "%.3f", pidfPower);
+    }
+
 }

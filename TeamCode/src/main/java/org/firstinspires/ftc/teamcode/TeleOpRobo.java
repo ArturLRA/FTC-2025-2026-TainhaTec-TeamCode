@@ -21,13 +21,14 @@ public class TeleOpRobo extends LinearOpMode {
     private CRServo servoGarra1 = null;
     private CRServo servoGarra2 = null;
 
-    private static double p = 0.5, i = 0.01, d = 0.02; //Proporcional, Integral, Derivativo
-    private static double f = 0.005; //feedFoward
+    private static double p = 0.05, i = 0.08, d = 0.0001; //Proporcional, Integral, Derivativo
+    private static double f = 0.05; //feedFoward
     private PIDFController pidf;
 
-    private int inicialArmPosition = 0, upArmPosition = 150, midleArmPosition = 100;
+    private int inicialArmPosition = 20, upArmPosition = 100, midleArmPosition = 60;
 
     private int armTargetPosition;
+    private final int angleTolerance = 1;
 
     @Override
     public void runOpMode() {
@@ -95,7 +96,17 @@ public class TeleOpRobo extends LinearOpMode {
 
     public void updateArmPIDF() {
         int currentPosition = armDrive.getCurrentPosition();
-        double pidfPower = pidf.calculate(currentPosition, armTargetPosition);
+        double pidfPower;
+
+        int error = armTargetPosition - currentPosition;
+
+        if (Math.abs(error) <= angleTolerance) {
+            pidf.reset();
+            pidfPower = f;
+        } else {
+            pidfPower = pidf.calculate(currentPosition, armTargetPosition);
+        }
+
         armDrive.setPower(pidfPower);
 
         telemetry.addData("Arm Power (PIDF)", "%.3f", pidfPower);

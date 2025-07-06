@@ -21,11 +21,11 @@ public class TeleOpRobo extends LinearOpMode {
     private CRServo servoGarra1 = null;
     private CRServo servoGarra2 = null;
 
-    private static double p = 0.05, i = 0.08, d = 0.0001; //Proporcional, Integral, Derivativo
+    private static double p = 0.05, i = 0.08, d = 0.0008; //Proporcional, Integral, Derivativo
     private static double f = 0.05; //feedFoward
     private PIDFController pidf;
 
-    private int inicialArmPosition = 20, upArmPosition = 100, midleArmPosition = 60;
+    private int inicialArmPosition = 35, upArmPosition = 100, midleArmPosition = 60;
 
     private int armTargetPosition;
     private final int angleTolerance = 1;

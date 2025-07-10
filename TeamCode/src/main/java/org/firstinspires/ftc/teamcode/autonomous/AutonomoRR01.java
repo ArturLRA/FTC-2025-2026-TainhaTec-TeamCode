@@ -1,6 +1,4 @@
-package org.firstinspires.ftc.teamcode;
-
-import androidx.annotation.NonNull;
+package org.firstinspires.ftc.teamcode.autonomous;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
@@ -13,8 +11,8 @@ import com.acmerobotics.roadrunner.ftc.Actions;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
-import org.firstinspires.ftc.teamcode.TankDrive;
-import org.firstinspires.ftc.teamcode.Drawing;
+import org.firstinspires.ftc.teamcode.roadRunner.Drawing;
+import org.firstinspires.ftc.teamcode.roadRunner.TankDrive;
 
 @Config
 @Autonomous(name = "AutonomoRR01", group = "Autonomous")

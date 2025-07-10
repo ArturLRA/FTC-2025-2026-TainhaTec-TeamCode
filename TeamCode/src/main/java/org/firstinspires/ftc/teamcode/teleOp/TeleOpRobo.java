@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.teleOp;
 
 import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -21,11 +21,11 @@ public class TeleOpRobo extends LinearOpMode {
     private CRServo servoGarra1 = null;
     private CRServo servoGarra2 = null;
 
-    private static double p = 0.05, i = 0.08, d = 0.0008; //Proporcional, Integral, Derivativo
+    private static double p = 0.05, i = 0.08, d = 0.0012; //Proporcional, Integral, Derivativo
     private static double f = 0.05; //feedFoward
     private PIDFController pidf;
 
-    private int inicialArmPosition = 35, upArmPosition = 100, midleArmPosition = 60;
+    private int inicialArmPosition = 25, upArmPosition = 100, midleArmPosition = 60;
 
     private int armTargetPosition;
     private final int angleTolerance = 1;
@@ -64,9 +64,9 @@ public class TeleOpRobo extends LinearOpMode {
             double rightPower;
 
             double drive = gamepad1.left_stick_y;
-            double turn = gamepad1.right_stick_x;
-            leftPower = Range.clip(drive + turn, -1.0, 1.0);
-            rightPower = Range.clip(drive - turn, -1.0, 1.0);
+            double turn =  gamepad1.right_stick_x;
+            leftPower = Range.clip(drive - turn, -1.0, 1.0);
+            rightPower = Range.clip(drive + turn, -1.0, 1.0);
 
             leftDrive.setPower(leftPower);
             rightDrive.setPower(rightPower);

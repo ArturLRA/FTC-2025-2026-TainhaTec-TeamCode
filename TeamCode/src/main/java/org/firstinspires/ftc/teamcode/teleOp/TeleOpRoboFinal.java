@@ -16,6 +16,8 @@ public class TeleOpRoboFinal extends LinearOpMode {
     private DcMotor frontRightDrive = null;
     private DcMotor backRightDrive = null;
 
+    private boolean motoresDireitosAtivos = true;
+
     @Override
     public void runOpMode() {
         telemetry.addData("Status", "Initialized");
@@ -55,10 +57,25 @@ public class TeleOpRoboFinal extends LinearOpMode {
             leftPower = Range.clip(drive - turn, -1.0, 1.0);
             rightPower = Range.clip(drive + turn, -1.0, 1.0);
 
+            if (gamepad1.a) {
+                motoresDireitosAtivos = false;
+            }
+            if (gamepad1.b) {
+                motoresDireitosAtivos = true;
+            }
+
             frontLeftDrive.setPower(leftPower);
             backLeftDrive.setPower(leftPower);
             frontRightDrive.setPower(rightPower);
             backRightDrive.setPower(rightPower);
+
+            if (motoresDireitosAtivos) {
+                frontRightDrive.setPower(rightPower);
+                backRightDrive.setPower(rightPower);
+            } else {
+                frontRightDrive.setPower(0);
+                backRightDrive.setPower(0);
+            }
 
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.update();

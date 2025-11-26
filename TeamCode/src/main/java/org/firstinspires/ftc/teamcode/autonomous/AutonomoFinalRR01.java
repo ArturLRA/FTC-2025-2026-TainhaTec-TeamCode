@@ -45,7 +45,7 @@ public class AutonomoFinalRR01 extends LinearOpMode {
             @Override
             public boolean run(@NonNull TelemetryPacket packet) {
                 if (!initialized) {
-                    shooterMotor.setVelocity(2100);
+                    shooterMotor.setVelocity(2000);
                     timer = new ElapsedTime();
                     initialized = true;
                 }
@@ -58,7 +58,7 @@ public class AutonomoFinalRR01 extends LinearOpMode {
                     shooterServo.setPower(0);
                 }
 
-                if (timer.seconds() > 3.0) {
+                if (timer.seconds() > 15.0) {
                     shooterMotor.setVelocity(0);
                     shooterServo.setPower(0);
                     return false;
@@ -77,7 +77,7 @@ public class AutonomoFinalRR01 extends LinearOpMode {
         int visionOutputPosition = 1;
 
         Action trajectoryAction = drive.actionBuilder(initialPose)
-                .turn(Math.toRadians(180))
+                .stopAndAdd(shooter.shoot())
                 .build();
 
         while (!isStopRequested() && !opModeIsActive()) {

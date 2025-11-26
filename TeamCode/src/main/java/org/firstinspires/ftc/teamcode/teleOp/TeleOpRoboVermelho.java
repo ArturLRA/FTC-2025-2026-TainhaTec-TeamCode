@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
@@ -21,69 +21,60 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="TeleOpRoboCameraMod", group="Linear OpMode")
-public class TeleOpCameraMod extends LinearOpMode {
+@TeleOp(name="TeleOpRoboVermelho", group="Linear OpMode")
+public class TeleOpRoboVermelho extends LinearOpMode {
 
-    // --- Variáveis do Drive e Mecanismos ---
     private ElapsedTime runtime = new ElapsedTime();
 
+    // Hardware
     private DcMotor frontLeftDrive = null;
     private DcMotor backLeftDrive = null;
     private DcMotor frontRightDrive = null;
     private DcMotor backRightDrive = null;
 
-    private DcMotor shooterMotor = null;
+    private DcMotorEx shooterMotor = null;
     private CRServo shooterServo = null;
+    private DcMotor intakeMotor = null;
 
-    // --- Variáveis da Câmera ---
+    // Câmera e Vision
     private static final boolean USE_WEBCAM = true;
     private AprilTagProcessor aprilTag;
     private VisionPortal visionPortal;
 
-    // --- Constantes de Controle (Ajuste Fino) ---
-
-    // Resolução da câmera (usada para achar o centro)
-    private static final int CAMERA_WIDTH = 640;
-    private static final int CAMERA_CENTER_X = CAMERA_WIDTH / 2;
-
-    // Ganho para girar o robô baseado no erro de pixels (X).
-    // Ex: Erro de 100 pixels * 0.002 = 0.2 de força.
-    private static final double DRIVE_GAIN_PIXEL = 0.002;
-
-    // Potência Mínima para vencer o atrito (Feedforward)
-    // Se o robô fizer barulho mas não girar, aumente isso (ex: 0.15)
-    private static final double MIN_TURN_POWER = 0.08;
-
-    // Constantes do Shooter
-    private static final double SHOOTER_BASE_POWER = 0.4;
-    private static final double SHOOTER_GAIN_PITCH = 0.02;
-
-    private static final double MAX_AUTO_TURN = 0.4;   // Segurança
+    private static final double MAX_AUTO_TURN = 0.5;
     private static final int DESIRED_EXPOSURE_MS = 6;
     private static final int DESIRED_GAIN = 250;
+
+    private double targetShooterVel = 0;
+    private double minShooterVelThreshold = 0;
+
+    private double lastError = 0;
+    private ElapsedTime pidTimer = new ElapsedTime();
+    private static final double KP = 0.035;
+    private static final double KD = 0.0005;
+    private static final double KF = 0.20;
 
     @Override
     public void runOpMode() {
         telemetry.addData("Status", "Iniciando Hardware...");
         telemetry.update();
 
-        // 1. Hardware Map
         frontLeftDrive  = hardwareMap.get(DcMotor.class, "front_left_drive");
         backLeftDrive   = hardwareMap.get(DcMotor.class, "back_left_drive");
         frontRightDrive = hardwareMap.get(DcMotor.class, "front_right_drive");
         backRightDrive  = hardwareMap.get(DcMotor.class, "back_right_drive");
-        shooterMotor    = hardwareMap.get(DcMotor.class, "shooter_motor");
+        shooterMotor    = hardwareMap.get(DcMotorEx.class, "shooter_motor");
         shooterServo    = hardwareMap.get(CRServo.class, "shooter_servo");
+        intakeMotor     = hardwareMap.get(DcMotor.class, "intake_motor");
 
         configureDriveMotors();
 
-        // 2. Câmera
         initAprilTag();
         if (USE_WEBCAM) {
             setManualExposure(DESIRED_EXPOSURE_MS, DESIRED_GAIN);
         }
 
-        telemetry.addData("Status", "Pronto. Pressione Play.");
+        telemetry.addData("Status", "Pronto para Start");
         telemetry.update();
 
         waitForStart();
@@ -91,17 +82,20 @@ public class TeleOpCameraMod extends LinearOpMode {
 
         while (opModeIsActive()) {
 
-            // --- Lógica Principal ---
-            if (gamepad1.left_bumper) {
-                // Modo Automático: Alinha usando o centro da imagem (pixels)
-                alignRobotWithTagPixel();
+            if (gamepad2.y) {
+                executeAutoAim();
             } else {
-                // Modo Manual
                 driveControlManual();
-                shooterControlManual();
             }
 
-            telemetry.addData("Status", "Run Time: " + runtime.toString());
+            intakeControl();
+
+            shooterLogic();
+
+            telemetry.addData("Status", "Tempo: " + runtime.toString());
+            telemetry.addData("Shooter Alvo", targetShooterVel);
+            telemetry.addData("Shooter Atual", shooterMotor.getVelocity());
+            telemetry.addData("Intake Power", intakeMotor.getPower());
             telemetry.update();
         }
 
@@ -110,39 +104,91 @@ public class TeleOpCameraMod extends LinearOpMode {
         }
     }
 
-    /**
-     * NOVA FUNÇÃO: Alinha o robô tentando colocar a Tag no centro X da imagem.
-     */
-    private void alignRobotWithTagPixel() {
-        AprilTagDetection detection = getPrimaryAprilTagDetection();
+    private void driveControlManual() {
+        double drive = -gamepad1.right_stick_y;
+        double turn  = gamepad1.left_stick_x;
+
+        double leftPower  = Range.clip(drive + turn, -1.0, 1.0);
+        double rightPower = Range.clip(drive - turn, -1.0, 1.0);
+
+        frontLeftDrive.setPower(leftPower);
+        backLeftDrive.setPower(leftPower);
+        frontRightDrive.setPower(rightPower);
+        backRightDrive.setPower(rightPower);
+    }
+
+    private void intakeControl() {
+        double intakePower;
+
+        if (gamepad1.right_trigger > 0.1) {
+            intakePower = -1.0;
+        } else if (gamepad1.left_trigger > 0.1) {
+            intakePower = 1.0;
+        } else {
+            intakePower = 0.25;
+        }
+
+        intakeMotor.setPower(intakePower);
+    }
+
+    private void shooterLogic() {
+        if (gamepad2.a) {
+            targetShooterVel = 2000;
+            minShooterVelThreshold = 1960;
+        } else if (gamepad2.b) {
+            targetShooterVel = 1750;
+            minShooterVelThreshold = 1710;
+        } else if (gamepad2.x) {
+            targetShooterVel = 0;
+            minShooterVelThreshold = 0;
+        }
+
+        if (gamepad2.dpad_down) {
+            shooterMotor.setVelocity(-1000);
+            shooterServo.setPower(-1);
+        } else {
+            shooterMotor.setVelocity(targetShooterVel);
+
+            if (gamepad2.right_trigger > 0.1) {
+                double currentVel = Math.abs(shooterMotor.getVelocity());
+
+                if (targetShooterVel > 0 && currentVel >= minShooterVelThreshold) {
+                    shooterServo.setPower(-1);
+                } else {
+                    shooterServo.setPower(0);
+                }
+            } else {
+                shooterServo.setPower(0);
+            }
+        }
+    }
+
+    private void executeAutoAim() {
+        AprilTagDetection detection = getAprilTagById(24);
 
         if (detection != null) {
-            // Pega a posição X do centro da tag na imagem (0 a 640)
-            double tagX = detection.center.x;
+            double currentError = detection.ftcPose.bearing;
 
-            // Calcula o erro: Distância do centro da tag até o centro da tela
-            // Se tagX < 320 (está na esquerda), erro é positivo.
-            // Se tagX > 320 (está na direita), erro é negativo.
-            double errorX = CAMERA_CENTER_X - tagX;
+            double currentTime = pidTimer.seconds();
+            if (currentTime == 0) currentTime = 0.001;
 
-            // Calcula a força de giro (Proporcional)
-            double turnPower = errorX * DRIVE_GAIN_PIXEL;
+            double derivative = (currentError - lastError) / currentTime;
+            pidTimer.reset();
+            lastError = currentError;
 
-            // Adiciona uma força mínima (Feedforward) para vencer o atrito se o erro for pequeno
-            if (Math.abs(errorX) > 10) { // Zona morta de 10 pixels
-                if (turnPower > 0) {
-                    turnPower += MIN_TURN_POWER;
-                } else {
-                    turnPower -= MIN_TURN_POWER;
-                }
+            double pTerm = currentError * KP;
+            double dTerm = derivative * KD;
+            double fTerm = Math.signum(currentError) * KF;
+
+            double turnPower = -(pTerm + dTerm + fTerm);
+
+            if (Math.abs(currentError) < 0.5) {
+                turnPower = 0;
+                lastError = 0;
             }
 
-            // Limita a velocidade
             turnPower = Range.clip(turnPower, -MAX_AUTO_TURN, MAX_AUTO_TURN);
 
-            // Aplica nas rodas
-            // Para girar para a esquerda (erro positivo), motores esquerdos vão para trás, direitos para frente.
-            // Nota: Se girar para o lado errado, inverta os sinais aqui!
             double leftPower  = -turnPower;
             double rightPower = turnPower;
 
@@ -151,22 +197,13 @@ public class TeleOpCameraMod extends LinearOpMode {
             frontRightDrive.setPower(rightPower);
             backRightDrive.setPower(rightPower);
 
-            // --- Controle do Shooter (Mantido pela distância/pitch) ---
-            double pitchError = detection.ftcPose.pitch;
-            double autoShooterPower = SHOOTER_BASE_POWER + (Math.abs(pitchError) * SHOOTER_GAIN_PITCH);
-            autoShooterPower = Range.clip(autoShooterPower, 0.0, 1.0);
-            shooterMotor.setPower(autoShooterPower);
-
-            // Telemetria para Debug
-            telemetry.addLine("--- MIRA PIXEL ---");
-            telemetry.addData("Tag X", "%.1f (Centro: %d)", tagX, CAMERA_CENTER_X);
-            telemetry.addData("Erro X", "%.1f pixels", errorX);
-            telemetry.addData("Turn Power", "%.3f", turnPower);
-
+            telemetry.addLine("--- MIRA PIDF ---");
+            telemetry.addData("Erro", "%.3f", currentError);
         } else {
             stopAllMotors();
-            telemetry.addLine("--- MIRA PIXEL ---");
-            telemetry.addLine("Procurando Tag...");
+            lastError = 0;
+            telemetry.addLine("--- MIRA ---");
+            telemetry.addLine("Tag não encontrada!");
         }
     }
 
@@ -175,31 +212,9 @@ public class TeleOpCameraMod extends LinearOpMode {
         backLeftDrive.setPower(0);
         frontRightDrive.setPower(0);
         backRightDrive.setPower(0);
-        shooterMotor.setPower(0);
+        shooterMotor.setVelocity(0);
         shooterServo.setPower(0);
-    }
-
-    // --- Métodos Manuais e Configurações ---
-
-    private void driveControlManual() {
-        double drive = -gamepad1.left_stick_y;
-        double turn  = gamepad1.right_stick_x;
-        double leftPower  = Range.clip(drive + turn, -1.0, 1.0);
-        double rightPower = Range.clip(drive - turn, -1.0, 1.0);
-        frontLeftDrive.setPower(leftPower);
-        backLeftDrive.setPower(leftPower);
-        frontRightDrive.setPower(rightPower);
-        backRightDrive.setPower(rightPower);
-    }
-
-    private void shooterControlManual() {
-        if (gamepad1.right_bumper) {
-            shooterMotor.setPower(0.75);
-            shooterServo.setPower(-1.0);
-        } else {
-            shooterMotor.setPower(0.0);
-            shooterServo.setPower(0.0);
-        }
+        intakeMotor.setPower(0.25);
     }
 
     private void configureDriveMotors() {
@@ -208,16 +223,18 @@ public class TeleOpCameraMod extends LinearOpMode {
         frontRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         backRightDrive.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
+        shooterMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
         frontLeftDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         backLeftDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         frontRightDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         backRightDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        shooterMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        shooterMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        frontLeftDrive.setDirection(DcMotor.Direction.FORWARD);
-        backLeftDrive.setDirection(DcMotor.Direction.FORWARD);
-        frontRightDrive.setDirection(DcMotor.Direction.REVERSE);
-        backRightDrive.setDirection(DcMotor.Direction.REVERSE);
+        frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
+        backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         shooterMotor.setDirection(DcMotor.Direction.FORWARD);
     }
 
@@ -233,7 +250,7 @@ public class TeleOpCameraMod extends LinearOpMode {
         VisionPortal.Builder builder = new VisionPortal.Builder();
         if (USE_WEBCAM) {
             builder.setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"));
-            builder.setCameraResolution(new android.util.Size(CAMERA_WIDTH, 480)); // Usa a constante de largura
+            builder.setCameraResolution(new android.util.Size(640, 480));
             builder.setStreamFormat(VisionPortal.StreamFormat.MJPEG);
         }
         builder.enableLiveView(true);
@@ -245,18 +262,20 @@ public class TeleOpCameraMod extends LinearOpMode {
 
     private void setManualExposure(int exposureMS, int gain) {
         if (visionPortal == null || !USE_WEBCAM) return;
+
         if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
             while (!isStopRequested() && (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING)) {
                 sleep(20);
             }
         }
+
         if (!isStopRequested()) {
             ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
             if (exposureControl.getMode() != ExposureControl.Mode.Manual) {
                 exposureControl.setMode(ExposureControl.Mode.Manual);
                 sleep(50);
             }
-            exposureControl.setExposure((long)exposureMS, TimeUnit.MILLISECONDS);
+            exposureControl.setExposure(exposureMS, TimeUnit.MILLISECONDS);
             sleep(20);
             GainControl gainControl = visionPortal.getCameraControl(GainControl.class);
             gainControl.setGain(gain);
@@ -264,10 +283,12 @@ public class TeleOpCameraMod extends LinearOpMode {
         }
     }
 
-    private AprilTagDetection getPrimaryAprilTagDetection() {
+    private AprilTagDetection getAprilTagById(int targetId) {
         List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-        if (!currentDetections.isEmpty()) {
-            return currentDetections.get(0);
+        for (AprilTagDetection detection : currentDetections) {
+            if (detection.metadata != null && detection.id == targetId) {
+                return detection;
+            }
         }
         return null;
     }
